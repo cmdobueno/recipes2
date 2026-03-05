@@ -58,7 +58,7 @@
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
-            "@php artisan boost:update --ansi || @php -r \"exit(0);\""
+            "@php -r \"if (! class_exists('Laravel\\\\Boost\\\\Mcp\\\\Commands\\\\UpdateCommand')) { exit(0); } passthru(PHP_BINARY.' artisan boost:update --ansi', $exitCode); exit($exitCode);\""
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
