@@ -1,0 +1,135 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: 'Fraunces', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+}
+
+:root {
+    --surface-cream: #fffaf4;
+    --surface-card: #fffdf9;
+    --surface-ink: #2f1e14;
+    --accent-primary: #cc4a20;
+    --accent-secondary: #f39a2f;
+    --accent-muted: #f7e3c9;
+    --line-soft: #eddcc6;
+}
+
+.public-app {
+    background:
+        radial-gradient(circle at 8% -10%, #ffdca8 0%, rgba(255, 220, 168, 0) 45%),
+        radial-gradient(circle at 88% 0%, #ffd2b7 0%, rgba(255, 210, 183, 0) 40%),
+        linear-gradient(180deg, #fff9f1 0%, #fffdf8 100%);
+    color: var(--surface-ink);
+}
+
+.public-shell {
+    position: relative;
+}
+
+.public-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(238, 220, 194, 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(238, 220, 194, 0.18) 1px, transparent 1px);
+    background-size: 42px 42px;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.brand-title {
+    font-family: var(--font-serif);
+    letter-spacing: -0.02em;
+}
+
+.hero-panel {
+    border: 1px solid var(--line-soft);
+    background: linear-gradient(160deg, #fffefb 0%, #fff5e8 100%);
+    box-shadow: 0 18px 45px rgba(188, 123, 64, 0.12);
+}
+
+.filter-panel {
+    border: 1px solid var(--line-soft);
+    background: var(--surface-card);
+    box-shadow: 0 10px 30px rgba(84, 44, 14, 0.08);
+}
+
+.recipe-card {
+    border: 1px solid var(--line-soft);
+    background: var(--surface-card);
+    box-shadow: 0 14px 35px rgba(98, 59, 30, 0.09);
+    transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.recipe-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 45px rgba(88, 45, 17, 0.14);
+}
+
+.recipe-photo {
+    background: linear-gradient(135deg, #ffd59f 0%, #ffb46d 100%);
+    border: 1px solid #efc48f;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid #f0d8b6;
+    background: #fff9ef;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #8d4b23;
+}
+
+.meta-pill {
+    border-radius: 999px;
+    background: #f7efe4;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #694127;
+}
+
+.cta-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    border: 1px solid #de6a2d;
+    background: linear-gradient(135deg, #ea6f2d 0%, #c84a1c 100%);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 0.45rem 0.95rem;
+    transition: filter 180ms ease;
+}
+
+.cta-link:hover {
+    filter: brightness(1.04);
+}
+
+.reveal-up {
+    animation: reveal-up 520ms ease both;
+    animation-delay: var(--delay, 0ms);
+}
+
+@keyframes reveal-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
