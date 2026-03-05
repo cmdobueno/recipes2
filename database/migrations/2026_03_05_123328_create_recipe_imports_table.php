@@ -17,7 +17,7 @@ return new class extends Migration
             $table->id();
             $table->string('source_url', 2048);
             $table->foreignId('requested_by_user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('recipe_id')->nullable()->constrained('recipes')->nullOnDelete();
+            $table->foreignId('recipe_id')->nullable();
             $table->enum('status', array_column(RecipeImportAttemptStatus::cases(), 'value'));
             $table->enum('method_used', array_column(RecipeImportMethod::cases(), 'value'))->nullable();
             $table->json('raw_payload')->nullable();
@@ -25,6 +25,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('status');
+            $table->index('recipe_id');
         });
     }
 
