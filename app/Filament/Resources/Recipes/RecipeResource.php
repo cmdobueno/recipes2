@@ -21,6 +21,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Bus;
 use InvalidArgumentException;
 
 class RecipeResource extends Resource
@@ -84,7 +85,7 @@ class RecipeResource extends Resource
             'error_message' => null,
         ]);
 
-        ImportRecipeFromUrl::dispatch($recipeImport->id);
+        static::dispatchImportJob($recipeImport);
 
         $recipeImport->refresh();
 
@@ -118,7 +119,7 @@ class RecipeResource extends Resource
             'error_message' => null,
         ]);
 
-        ImportRecipeFromUrl::dispatch($recipeImport->id);
+        static::dispatchImportJob($recipeImport);
 
         $recipeImport->refresh();
 
@@ -151,5 +152,18 @@ class RecipeResource extends Resource
             ->body('The recipe will appear when import processing completes.')
             ->success()
             ->send();
+    }
+
+    private static function dispatchImportJob(RecipeImport $recipeImport): void
+    {
+        $job = new ImportRecipeFromUrl($recipeImport->id);
+
+        if (config('queue.default') === 'sync') {
+            Bus::dispatchSync($job);
+
+            return;
+        }
+
+        dispatch($job);
     }
 }
