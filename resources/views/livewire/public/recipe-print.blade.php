@@ -20,9 +20,6 @@
     </div>
 
     <div class="meta">
-        @if ($recipe->servings)
-            <span class="chip">Servings: {{ $recipe->servings }}</span>
-        @endif
         @if ($recipe->prep_minutes)
             <span class="chip">Prep: {{ $recipe->prep_minutes }} min</span>
         @endif
@@ -32,8 +29,8 @@
         @if ($recipe->total_minutes)
             <span class="chip">Total: {{ $recipe->total_minutes }} min</span>
         @endif
-        @if ($recipe->calories_per_serving)
-            <span class="chip">{{ $recipe->calories_per_serving }} kcal</span>
+        @if ($recipe->total_calories)
+            <span class="chip">Recipe Total: {{ $recipe->total_calories }} kcal</span>
         @endif
     </div>
 
@@ -62,6 +59,45 @@
         </section>
     @endif
 
+    @if ($recipe->total_calories || $recipe->total_protein_grams || $recipe->total_carbs_grams || $recipe->total_fat_grams)
+        <section>
+            <h2>Nutrition</h2>
+            <ul>
+                @if ($recipe->total_calories)
+                    <li>Recipe total calories: {{ $recipe->total_calories }}</li>
+                @endif
+                @if ($recipe->total_protein_grams)
+                    <li>Recipe protein: {{ number_format((float) $recipe->total_protein_grams, 1) }}g</li>
+                @endif
+                @if ($recipe->total_carbs_grams)
+                    <li>Recipe carbs: {{ number_format((float) $recipe->total_carbs_grams, 1) }}g</li>
+                @endif
+                @if ($recipe->total_fat_grams)
+                    <li>Recipe fat: {{ number_format((float) $recipe->total_fat_grams, 1) }}g</li>
+                @endif
+            </ul>
+
+            @if ($recipe->servings)
+                <h2>Per Serving</h2>
+                <ul>
+                    @if ($recipe->caloriesPerServingEstimate() !== null)
+                        <li>Calories: {{ number_format($recipe->caloriesPerServingEstimate(), 1) }}</li>
+                    @endif
+                    @if ($recipe->proteinPerServingEstimate() !== null)
+                        <li>Protein: {{ number_format($recipe->proteinPerServingEstimate(), 1) }}g</li>
+                    @endif
+                    @if ($recipe->carbsPerServingEstimate() !== null)
+                        <li>Carbs: {{ number_format($recipe->carbsPerServingEstimate(), 1) }}g</li>
+                    @endif
+                    @if ($recipe->fatPerServingEstimate() !== null)
+                        <li>Fat: {{ number_format($recipe->fatPerServingEstimate(), 1) }}g</li>
+                    @endif
+                </ul>
+                <p>Based on {{ $recipe->servings }} servings.</p>
+            @endif
+        </section>
+    @endif
+
     @if ($recipe->source_url)
         <p class="source">
             Source:
@@ -69,4 +105,3 @@
         </p>
     @endif
 </article>
-

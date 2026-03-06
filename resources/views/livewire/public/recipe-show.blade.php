@@ -19,9 +19,6 @@
             </div>
 
             <div class="flex flex-wrap gap-2">
-                @if ($recipe->servings)
-                    <span class="meta-pill">Servings: {{ $recipe->servings }}</span>
-                @endif
                 @if ($recipe->prep_minutes)
                     <span class="meta-pill">Prep: {{ $recipe->prep_minutes }} min</span>
                 @endif
@@ -31,8 +28,8 @@
                 @if ($recipe->total_minutes)
                     <span class="meta-pill">Total: {{ $recipe->total_minutes }} min</span>
                 @endif
-                @if ($recipe->calories_per_serving)
-                    <span class="meta-pill">{{ $recipe->calories_per_serving }} kcal</span>
+                @if ($recipe->total_calories)
+                    <span class="meta-pill">Recipe Total: {{ $recipe->total_calories }} kcal</span>
                 @endif
             </div>
 
@@ -77,6 +74,75 @@
         <section class="filter-panel reveal-up rounded-2xl p-5 sm:p-6" style="--delay: 180ms">
             <h2 class="brand-title text-3xl font-semibold text-stone-900">Notes</h2>
             <p class="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-stone-800 sm:text-base">{{ $recipe->notes }}</p>
+        </section>
+    @endif
+
+    @if ($recipe->total_calories || $recipe->total_protein_grams || $recipe->total_carbs_grams || $recipe->total_fat_grams)
+        <section class="filter-panel reveal-up rounded-2xl p-5 sm:p-6" style="--delay: 220ms">
+            <h2 class="brand-title text-3xl font-semibold text-stone-900">Nutrition</h2>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                @if ($recipe->total_calories)
+                    <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Recipe Total Calories</p>
+                        <p class="mt-1 text-2xl font-bold text-stone-900">{{ $recipe->total_calories }}</p>
+                    </div>
+                @endif
+                @if ($recipe->total_protein_grams)
+                    <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Recipe Protein</p>
+                        <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format((float) $recipe->total_protein_grams, 1) }}g</p>
+                    </div>
+                @endif
+                @if ($recipe->total_carbs_grams)
+                    <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Recipe Carbs</p>
+                        <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format((float) $recipe->total_carbs_grams, 1) }}g</p>
+                    </div>
+                @endif
+                @if ($recipe->total_fat_grams)
+                    <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Recipe Fat</p>
+                        <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format((float) $recipe->total_fat_grams, 1) }}g</p>
+                    </div>
+                @endif
+            </div>
+
+            @if ($recipe->servings)
+                <div class="mt-5 border-t border-orange-100 pt-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-lg font-semibold text-stone-900">Per Serving</h3>
+                        <span class="text-sm text-stone-600">Based on {{ $recipe->servings }} servings</span>
+                    </div>
+
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        @if ($recipe->caloriesPerServingEstimate() !== null)
+                            <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Calories</p>
+                                <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format($recipe->caloriesPerServingEstimate(), 1) }}</p>
+                            </div>
+                        @endif
+                        @if ($recipe->proteinPerServingEstimate() !== null)
+                            <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Protein</p>
+                                <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format($recipe->proteinPerServingEstimate(), 1) }}g</p>
+                            </div>
+                        @endif
+                        @if ($recipe->carbsPerServingEstimate() !== null)
+                            <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Carbs</p>
+                                <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format($recipe->carbsPerServingEstimate(), 1) }}g</p>
+                            </div>
+                        @endif
+                        @if ($recipe->fatPerServingEstimate() !== null)
+                            <div class="rounded-2xl border border-orange-200 bg-white px-4 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">Fat</p>
+                                <p class="mt-1 text-2xl font-bold text-stone-900">{{ number_format($recipe->fatPerServingEstimate(), 1) }}g</p>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @endif
         </section>
     @endif
 </div>

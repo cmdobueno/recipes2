@@ -159,6 +159,7 @@ class RecipeForm
                     ->columns(4)
                     ->schema([
                         TextInput::make('servings')
+                            ->label('Manual Servings')
                             ->numeric()
                             ->minValue(1),
                         TextInput::make('prep_minutes')
@@ -171,11 +172,39 @@ class RecipeForm
                             ->numeric()
                             ->minValue(0),
                         TextInput::make('calories_per_serving')
+                            ->label('Source Calories / Serving')
                             ->numeric()
                             ->minValue(0),
                         Textarea::make('notes')
                             ->rows(3)
                             ->columnSpanFull(),
+                    ]),
+                Section::make('Nutrition Totals')
+                    ->description('Whole recipe nutrition totals. Per-serving values on the public site are derived from these totals when servings is set.')
+                    ->columns(4)
+                    ->schema([
+                        TextInput::make('total_calories')
+                            ->label('Recipe Calories')
+                            ->numeric()
+                            ->minValue(0),
+                        TextInput::make('total_protein_grams')
+                            ->label('Protein')
+                            ->numeric()
+                            ->step(0.1)
+                            ->minValue(0)
+                            ->suffix('g'),
+                        TextInput::make('total_carbs_grams')
+                            ->label('Carbs')
+                            ->numeric()
+                            ->step(0.1)
+                            ->minValue(0)
+                            ->suffix('g'),
+                        TextInput::make('total_fat_grams')
+                            ->label('Fat')
+                            ->numeric()
+                            ->step(0.1)
+                            ->minValue(0)
+                            ->suffix('g'),
                     ]),
                 Section::make('Import')
                     ->columns(2)

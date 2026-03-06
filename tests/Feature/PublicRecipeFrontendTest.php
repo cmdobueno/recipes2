@@ -25,6 +25,11 @@ it('shows published recipe details to guests', function () {
     $recipe = publishedRecipe([
         'title' => 'Sunday Pasta',
         'slug' => 'sunday-pasta',
+        'servings' => 4,
+        'total_calories' => 1600,
+        'total_protein_grams' => 120.0,
+        'total_carbs_grams' => 180.0,
+        'total_fat_grams' => 60.0,
         'source_url' => 'https://example.com/sunday-pasta',
         'source_domain' => 'example.com',
     ]);
@@ -32,6 +37,11 @@ it('shows published recipe details to guests', function () {
     $this->get("/recipes/{$recipe->slug}")
         ->assertSuccessful()
         ->assertSee('Sunday Pasta')
+        ->assertSee('Nutrition')
+        ->assertSee('Recipe Total Calories')
+        ->assertSee('1600')
+        ->assertSee('Per Serving')
+        ->assertSee('Based on 4 servings')
         ->assertSee('Source:')
         ->assertSee('example.com')
         ->assertSee("/recipes/{$recipe->slug}/print");
@@ -51,6 +61,11 @@ it('shows a print-friendly page for published recipes', function () {
     $recipe = publishedRecipe([
         'title' => 'Printable Lasagna',
         'slug' => 'printable-lasagna',
+        'servings' => 8,
+        'total_calories' => 2400,
+        'total_protein_grams' => 140.0,
+        'total_carbs_grams' => 220.0,
+        'total_fat_grams' => 90.0,
         'ingredients' => ['1 lb beef', '2 cups sauce'],
         'instructions' => ['Cook beef', 'Bake with sauce'],
     ]);
@@ -58,6 +73,8 @@ it('shows a print-friendly page for published recipes', function () {
     $this->get("/recipes/{$recipe->slug}/print")
         ->assertSuccessful()
         ->assertSee('Printable Lasagna')
+        ->assertSee('Nutrition')
+        ->assertSee('Per Serving')
         ->assertSee('Ingredients')
         ->assertSee('Instructions');
 });

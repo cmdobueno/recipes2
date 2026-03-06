@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Recipe extends Model
 {
@@ -28,6 +29,10 @@ class Recipe extends Model
         'cook_minutes',
         'total_minutes',
         'calories_per_serving',
+        'total_calories',
+        'total_protein_grams',
+        'total_carbs_grams',
+        'total_fat_grams',
         'ingredients',
         'instructions',
         'notes',
@@ -52,6 +57,10 @@ class Recipe extends Model
         return [
             'ingredients' => 'array',
             'instructions' => 'array',
+            'total_calories' => 'integer',
+            'total_protein_grams' => 'decimal:1',
+            'total_carbs_grams' => 'decimal:1',
+            'total_fat_grams' => 'decimal:1',
             'import_status' => RecipeImportStatus::class,
             'import_method' => RecipeImportMethod::class,
             'imported_at' => 'datetime',
@@ -98,5 +107,46 @@ class Recipe extends Model
     public function imports(): HasMany
     {
         return $this->hasMany(RecipeImport::class);
+    }
+
+    /**
+     * @return HasOne<RecipeImport, $this>
+     */
+    public function latestImport(): HasOne
+    {
+        return $this->hasOne(RecipeImport::class)->latestOfMany();
+    }
+
+    public function caloriesPerServingEstimate(): ?float
+    {
+        if ($this->total_calories === null || empty($this->servings)) {
+            return null;
+        }
+
+        return round($this->total_calories / $this->servings, 1);
+    }
+
+    public function proteinPerServingEstimate(): ?float
+    {
+        return $this->macroPerServing($this->total_protein_grams);
+    }
+
+    public function carbsPerServingEstimate(): ?float
+    {
+        return $this->macroPerServing($this->total_carbs_grams);
+    }
+
+    public function fatPerServingEstimate(): ?float
+    {
+        return $this->macroPerServing($this->total_fat_grams);
+    }
+
+    private function macroPerServing(string|float|int|null $value): ?float
+    {
+        if ($value === null || empty($this->servings)) {
+            return null;
+        }
+
+        return round(((float) $value) / $this->servings, 1);
     }
 }

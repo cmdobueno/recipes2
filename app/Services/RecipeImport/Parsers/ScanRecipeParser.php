@@ -4,66 +4,70 @@ namespace App\Services\RecipeImport\Parsers;
 
 use App\Data\ImportedRecipeData;
 use App\Enums\RecipeImportMethod;
+use App\Models\RecipeImport;
+use App\Models\RecipeImportFile;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Throwable;
 
-class OpenAiRecipeParser
+class ScanRecipeParser
 {
-    public function parse(string $html, ?string $sourceUrl): ?ImportedRecipeData
+    public function parse(RecipeImport $recipeImport): ?ImportedRecipeData
     {
         if (blank(config('services.openai.api_key'))) {
-            return null;
+            throw new RuntimeException('Scan import requires an OpenAI API key.');
         }
 
-        $trimmedContent = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? ''), 0, 14000);
+        /** @var Collection<int, RecipeImportFile> $files */
+        $files = $recipeImport->files()->get();
 
-        if (blank($trimmedContent)) {
-            return null;
+        if ($files->isEmpty()) {
+            throw new RuntimeException('No scanned pages were attached to this import.');
         }
 
-        $sourceLabel = filled($sourceUrl) ? "Source URL: {$sourceUrl}" : 'Source: Pasted recipe content';
+        $content = $this->buildScanContent($files);
+
+        if (count($content) === 1) {
+            throw new RuntimeException('Unable to read any uploaded scan pages for extraction.');
+        }
 
         $response = Http::baseUrl(config('services.openai.base_url'))
             ->acceptJson()
-            ->timeout(60)
+            ->timeout(90)
             ->withToken(config('services.openai.api_key'))
             ->post('responses', [
-                'model' => config('services.openai.model'),
+                'model' => config('services.openai.scan_model'),
                 'input' => [
                     [
                         'role' => 'system',
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Extract recipe details from provided page content. Respond with strict JSON only.',
+                                'text' => 'Extract exactly one recipe from the provided scanned pages. Do not estimate servings. Return strict JSON only.',
                             ],
                         ],
                     ],
                     [
                         'role' => 'user',
-                        'content' => [
-                            [
-                                'type' => 'input_text',
-                                'text' => "{$sourceLabel}\n\nPage Content:\n{$trimmedContent}",
-                            ],
-                        ],
+                        'content' => $content,
                     ],
                 ],
                 'text' => [
                     'format' => [
                         'type' => 'json_schema',
-                        'name' => 'recipe_import',
+                        'name' => 'scanned_recipe_import',
                         'strict' => true,
                         'schema' => [
                             'type' => 'object',
                             'properties' => [
                                 'title' => ['type' => 'string'],
                                 'description' => ['type' => ['string', 'null']],
-                                'servings' => ['type' => ['integer', 'null']],
                                 'prep_minutes' => ['type' => ['integer', 'null']],
                                 'cook_minutes' => ['type' => ['integer', 'null']],
                                 'total_minutes' => ['type' => ['integer', 'null']],
-                                'calories_per_serving' => ['type' => ['integer', 'null']],
                                 'ingredients' => [
                                     'type' => 'array',
                                     'items' => ['type' => 'string'],
@@ -73,7 +77,6 @@ class OpenAiRecipeParser
                                     'items' => ['type' => 'string'],
                                 ],
                                 'notes' => ['type' => ['string', 'null']],
-                                'source_title' => ['type' => ['string', 'null']],
                                 'category' => ['type' => ['string', 'null']],
                                 'tags' => [
                                     'type' => 'array',
@@ -83,15 +86,12 @@ class OpenAiRecipeParser
                             'required' => [
                                 'title',
                                 'description',
-                                'servings',
                                 'prep_minutes',
                                 'cook_minutes',
                                 'total_minutes',
-                                'calories_per_serving',
                                 'ingredients',
                                 'instructions',
                                 'notes',
-                                'source_title',
                                 'category',
                                 'tags',
                             ],
@@ -102,45 +102,124 @@ class OpenAiRecipeParser
             ]);
 
         if ($response->failed()) {
-            return null;
+            throw new RuntimeException($this->formatOpenAiFailure(
+                prefix: 'OpenAI scan extraction request failed',
+                response: $response,
+            ));
         }
 
         $outputText = $this->extractOutputText($response->json());
 
         if (blank($outputText)) {
-            return null;
+            throw new RuntimeException('OpenAI scan extraction returned no structured recipe output.');
         }
 
         try {
             $decoded = json_decode($outputText, true, 512, JSON_THROW_ON_ERROR);
         } catch (Throwable $exception) {
-            return null;
+            throw new RuntimeException(
+                'OpenAI scan extraction returned invalid JSON: '.$this->truncateText($outputText),
+                previous: $exception,
+            );
         }
 
         if (! is_array($decoded) || blank($decoded['title'] ?? null)) {
-            return null;
+            throw new RuntimeException('OpenAI scan extraction returned incomplete recipe data.');
         }
 
         return new ImportedRecipeData(
             title: trim((string) $decoded['title']),
             description: $this->nullableString($decoded['description'] ?? null),
-            servings: $this->nullableInt($decoded['servings'] ?? null),
+            servings: null,
             prepMinutes: $this->nullableInt($decoded['prep_minutes'] ?? null),
             cookMinutes: $this->nullableInt($decoded['cook_minutes'] ?? null),
             totalMinutes: $this->nullableInt($decoded['total_minutes'] ?? null),
-            caloriesPerServing: $this->nullableInt($decoded['calories_per_serving'] ?? null),
+            caloriesPerServing: null,
             ingredients: $this->stringArray($decoded['ingredients'] ?? []),
             instructions: $this->stringArray($decoded['instructions'] ?? []),
             notes: $this->nullableString($decoded['notes'] ?? null),
-            sourceUrl: $sourceUrl,
-            sourceDomain: filled($sourceUrl) ? (parse_url($sourceUrl, PHP_URL_HOST) ?: null) : null,
-            sourceTitle: $this->nullableString($decoded['source_title'] ?? null),
+            sourceUrl: null,
+            sourceDomain: null,
+            sourceTitle: $files->first()?->original_name,
             categoryName: $this->nullableString($decoded['category'] ?? null),
             tags: $this->stringArray($decoded['tags'] ?? []),
             importMethod: RecipeImportMethod::Ai,
             needsReview: true,
             rawPayload: $decoded,
         );
+    }
+
+    /**
+     * @param  Collection<int, RecipeImportFile>  $files
+     * @return array<int, array<string, string>>
+     */
+    private function buildScanContent(Collection $files): array
+    {
+        $content = [
+            [
+                'type' => 'input_text',
+                'text' => 'These are ordered scanned recipe pages. Preserve ingredient and instruction order across all pages.',
+            ],
+        ];
+
+        foreach ($files as $file) {
+            if ($this->isPdf($file->mime_type)) {
+                $uploadedFileId = $this->uploadPdfToOpenAi($file);
+
+                $content[] = [
+                    'type' => 'input_file',
+                    'file_id' => $uploadedFileId,
+                ];
+
+                continue;
+            }
+
+            $fileContents = Storage::disk($file->disk)->get($file->path);
+
+            $content[] = [
+                'type' => 'input_image',
+                'image_url' => 'data:'.$file->mime_type.';base64,'.base64_encode($fileContents),
+            ];
+        }
+
+        return $content;
+    }
+
+    private function uploadPdfToOpenAi(RecipeImportFile $file): string
+    {
+        $absolutePath = Storage::disk($file->disk)->path($file->path);
+        $resource = fopen($absolutePath, 'r');
+
+        if ($resource === false) {
+            throw new RuntimeException("Unable to open scanned PDF file: {$file->original_name}");
+        }
+
+        try {
+            $response = Http::baseUrl(config('services.openai.base_url'))
+                ->acceptJson()
+                ->withToken(config('services.openai.api_key'))
+                ->attach('file', $resource, $file->original_name)
+                ->post('files', [
+                    'purpose' => 'user_data',
+                ]);
+        } finally {
+            fclose($resource);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException($this->formatOpenAiFailure(
+                prefix: "OpenAI PDF upload failed for {$file->original_name}",
+                response: $response,
+            ));
+        }
+
+        $fileId = $response->json('id');
+
+        if (! is_string($fileId) || blank($fileId)) {
+            throw new RuntimeException("OpenAI PDF upload did not return a file id for {$file->original_name}.");
+        }
+
+        return $fileId;
     }
 
     /**
@@ -227,5 +306,46 @@ class OpenAiRecipeParser
         }
 
         return array_values(array_unique($cleaned));
+    }
+
+    private function isPdf(?string $mimeType): bool
+    {
+        return $mimeType === 'application/pdf';
+    }
+
+    private function formatOpenAiFailure(string $prefix, Response $response): string
+    {
+        $status = $response->status();
+        $errorMessage = $this->extractOpenAiErrorMessage($response);
+
+        return "{$prefix} (HTTP {$status}): {$errorMessage}";
+    }
+
+    private function extractOpenAiErrorMessage(Response $response): string
+    {
+        $responseData = $response->json();
+
+        if (is_array($responseData)) {
+            $errorMessage = data_get($responseData, 'error.message');
+
+            if (is_string($errorMessage) && filled($errorMessage)) {
+                return $errorMessage;
+            }
+        }
+
+        return $this->truncateText($response->body());
+    }
+
+    private function truncateText(string $value): string
+    {
+        $normalizedValue = trim(preg_replace('/\s+/', ' ', $value) ?? '');
+
+        if ($normalizedValue === '') {
+            return 'No error details were returned.';
+        }
+
+        return mb_strlen($normalizedValue) > 220
+            ? mb_substr($normalizedValue, 0, 220).'...'
+            : $normalizedValue;
     }
 }

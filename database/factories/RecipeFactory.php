@@ -33,6 +33,10 @@ class RecipeFactory extends Factory
             'cook_minutes' => fake()->numberBetween(10, 60),
             'total_minutes' => fake()->numberBetween(20, 90),
             'calories_per_serving' => fake()->numberBetween(200, 700),
+            'total_calories' => fake()->numberBetween(900, 2400),
+            'total_protein_grams' => fake()->randomFloat(1, 40, 180),
+            'total_carbs_grams' => fake()->randomFloat(1, 60, 260),
+            'total_fat_grams' => fake()->randomFloat(1, 20, 140),
             'ingredients' => [
                 fake()->sentence(3),
                 fake()->sentence(3),

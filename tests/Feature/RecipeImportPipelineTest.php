@@ -1,6 +1,7 @@
 <?php
 
 use App\Data\ImportedRecipeData;
+use App\Data\RecipeNutritionEstimateData;
 use App\Enums\RecipeImportAttemptStatus;
 use App\Enums\RecipeImportMethod;
 use App\Enums\RecipeImportStatus;
@@ -14,6 +15,7 @@ use App\Services\RecipeImport\Parsers\HtmlRecipeParser;
 use App\Services\RecipeImport\Parsers\JsonLdRecipeParser;
 use App\Services\RecipeImport\Parsers\OpenAiRecipeParser;
 use App\Services\RecipeImport\RecipeImportService;
+use App\Services\RecipeImport\RecipeNutritionEstimator;
 use Illuminate\Support\Facades\Http;
 
 it('imports via json-ld first and auto-creates missing tags', function () {
@@ -40,13 +42,24 @@ it('imports via json-ld first and auto-creates missing tags', function () {
     $openAiParser = \Mockery::mock(OpenAiRecipeParser::class);
     $openAiParser->shouldNotReceive('parse');
 
-    $service = new RecipeImportService($jsonParser, $htmlParser, $openAiParser);
+    $nutritionEstimator = \Mockery::mock(RecipeNutritionEstimator::class);
+    $nutritionEstimator->shouldReceive('estimate')->once()->andReturn(new RecipeNutritionEstimateData(
+        totalCalories: 1840,
+        totalProteinGrams: 122.5,
+        totalCarbsGrams: 165.0,
+        totalFatGrams: 58.2,
+        rawPayload: ['source' => 'nutrition-test'],
+    ));
+
+    $service = new RecipeImportService($jsonParser, $htmlParser, $openAiParser, $nutritionEstimator);
     $result = $service->process($recipeImport);
 
     expect($result['recipe']->import_method)->toBe(RecipeImportMethod::JsonLd);
     expect($result['recipe']->import_status)->toBe(RecipeImportStatus::Imported);
     expect(Category::query()->where('slug', 'dinner')->exists())->toBeTrue();
     expect($result['recipe']->fresh()->category?->slug)->toBe('dinner');
+    expect($result['recipe']->fresh()->total_calories)->toBe(1840);
+    expect((float) $result['recipe']->fresh()->total_protein_grams)->toBe(122.5);
     expect(Tag::query()->where('slug', 'quick-dinner')->exists())->toBeTrue();
     expect($result['recipe']->fresh()->tags)->toHaveCount(2);
 });

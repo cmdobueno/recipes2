@@ -3,6 +3,7 @@
 namespace App\Services\RecipeImport;
 
 use App\Data\ImportedRecipeData;
+use App\Data\RecipeNutritionEstimateData;
 use App\Enums\RecipeImportMethod;
 use App\Enums\RecipeImportStatus;
 use App\Models\Category;
@@ -12,6 +13,7 @@ use App\Models\Tag;
 use App\Services\RecipeImport\Parsers\HtmlRecipeParser;
 use App\Services\RecipeImport\Parsers\JsonLdRecipeParser;
 use App\Services\RecipeImport\Parsers\OpenAiRecipeParser;
+use App\Services\RecipeImport\Parsers\ScanRecipeParser;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +27,8 @@ class RecipeImportService
         public JsonLdRecipeParser $jsonLdRecipeParser,
         public HtmlRecipeParser $htmlRecipeParser,
         public OpenAiRecipeParser $openAiRecipeParser,
+        public ?RecipeNutritionEstimator $recipeNutritionEstimator = null,
+        public ?ScanRecipeParser $scanRecipeParser = null,
     ) {}
 
     /**
@@ -77,6 +81,26 @@ class RecipeImportService
         ];
     }
 
+    /**
+     * @return array{recipe: Recipe, data: ImportedRecipeData}
+     */
+    public function processScans(RecipeImport $recipeImport): array
+    {
+        $scanRecipeParser = $this->scanRecipeParser ?? app(ScanRecipeParser::class);
+        $importedRecipeData = $scanRecipeParser->parse($recipeImport);
+
+        if ($importedRecipeData === null) {
+            throw new RuntimeException('Unable to parse recipe content from the scanned pages.');
+        }
+
+        $recipe = $this->persistImportedRecipe($recipeImport, $importedRecipeData);
+
+        return [
+            'recipe' => $recipe,
+            'data' => $importedRecipeData,
+        ];
+    }
+
     private function parseRecipeData(string $content, ?string $sourceUrl): ?ImportedRecipeData
     {
         return $this->jsonLdRecipeParser->parse($content, $sourceUrl)
@@ -86,7 +110,9 @@ class RecipeImportService
 
     private function persistImportedRecipe(RecipeImport $recipeImport, ImportedRecipeData $importedRecipeData): Recipe
     {
-        $recipe = DB::transaction(function () use ($recipeImport, $importedRecipeData): Recipe {
+        $nutritionEstimate = $this->estimateNutritionTotals($importedRecipeData);
+
+        $recipe = DB::transaction(function () use ($recipeImport, $importedRecipeData, $nutritionEstimate): Recipe {
             $recipe = $recipeImport->recipe ?? new Recipe;
 
             if (! $recipe->exists) {
@@ -96,11 +122,15 @@ class RecipeImportService
             $recipe->title = $importedRecipeData->title;
             $recipe->slug = $this->generateUniqueRecipeSlug($importedRecipeData->title, $recipe);
             $recipe->description = $importedRecipeData->description;
-            $recipe->servings = $importedRecipeData->servings;
+            $recipe->servings = $recipe->exists ? $recipe->servings : null;
             $recipe->prep_minutes = $importedRecipeData->prepMinutes;
             $recipe->cook_minutes = $importedRecipeData->cookMinutes;
             $recipe->total_minutes = $importedRecipeData->totalMinutes;
             $recipe->calories_per_serving = $importedRecipeData->caloriesPerServing;
+            $recipe->total_calories = $nutritionEstimate?->totalCalories;
+            $recipe->total_protein_grams = $nutritionEstimate?->totalProteinGrams;
+            $recipe->total_carbs_grams = $nutritionEstimate?->totalCarbsGrams;
+            $recipe->total_fat_grams = $nutritionEstimate?->totalFatGrams;
             $recipe->ingredients = $importedRecipeData->ingredients;
             $recipe->instructions = $importedRecipeData->instructions;
             $recipe->notes = $importedRecipeData->notes;
@@ -130,6 +160,13 @@ class RecipeImportService
         });
 
         return $recipe;
+    }
+
+    private function estimateNutritionTotals(ImportedRecipeData $importedRecipeData): ?RecipeNutritionEstimateData
+    {
+        $nutritionEstimator = $this->recipeNutritionEstimator ?? app(RecipeNutritionEstimator::class);
+
+        return $nutritionEstimator->estimate($importedRecipeData);
     }
 
     private function fetchHtml(string $sourceUrl): string

@@ -6,10 +6,10 @@ use App\Filament\Resources\Recipes\RecipeResource;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use InvalidArgumentException;
+use RuntimeException;
 
 class ViewRecipe extends ViewRecord
 {
@@ -19,18 +19,18 @@ class ViewRecipe extends ViewRecord
     {
         return [
             EditAction::make(),
+            Action::make('viewLatestScans')
+                ->label('Latest Scans')
+                ->icon('heroicon-o-photo')
+                ->visible(fn (): bool => auth()->user() instanceof User && RecipeResource::latestImportFilesUrl($this->record) !== null)
+                ->url(fn (): ?string => RecipeResource::latestImportFilesUrl($this->record), shouldOpenInNewTab: true),
             Action::make('reimport')
-                ->label('Re-import URL')
+                ->label('Re-import Recipe')
                 ->icon('heroicon-o-arrow-path')
-                ->form([
-                    TextInput::make('source_url')
-                        ->label('Recipe URL')
-                        ->default($this->record->source_url)
-                        ->url(),
-                    Textarea::make('pasted_content')
-                        ->label('Or paste recipe content')
-                        ->rows(10),
-                ])
+                ->form(fn (): array => RecipeResource::getImportActionForm(
+                    sourceUrl: $this->record->source_url,
+                    allowScans: auth()->user() instanceof User,
+                ))
                 ->action(function (array $data): void {
                     $user = auth()->user();
 
@@ -38,34 +38,47 @@ class ViewRecipe extends ViewRecord
                         return;
                     }
 
-                    $sourceUrl = trim((string) ($data['source_url'] ?? ''));
-                    $pastedContent = trim((string) ($data['pasted_content'] ?? ''));
-
-                    if (blank($sourceUrl) && blank($pastedContent)) {
+                    try {
+                        $recipeImport = RecipeResource::handleImportRequest($data, $user, $this->record);
+                    } catch (InvalidArgumentException $exception) {
                         Notification::make()
-                            ->title('Recipe URL or pasted content is required.')
+                            ->title($exception->getMessage())
                             ->danger()
                             ->send();
 
                         return;
                     }
 
-                    if (filled($pastedContent)) {
-                        $recipeImport = RecipeResource::queueImportFromPastedContent(
-                            pastedContent: $pastedContent,
-                            requestedByUser: $user,
-                            recipe: $this->record,
-                            sourceUrl: filled($sourceUrl) ? $sourceUrl : null,
-                        );
-                    } else {
-                        $recipeImport = RecipeResource::queueImport(
-                            sourceUrl: $sourceUrl,
-                            requestedByUser: $user,
-                            recipe: $this->record,
-                        );
+                    RecipeResource::notifyImportStatus($recipeImport);
+                }),
+            Action::make('recalculateNutrition')
+                ->label('Recalculate Nutrition')
+                ->icon('heroicon-o-calculator')
+                ->action(function (): void {
+                    $user = auth()->user();
+
+                    if (! $user instanceof User) {
+                        return;
                     }
 
-                    RecipeResource::notifyImportStatus($recipeImport);
+                    try {
+                        RecipeResource::recalculateNutrition($this->record, $user);
+                    } catch (InvalidArgumentException|RuntimeException $exception) {
+                        Notification::make()
+                            ->title('Nutrition recalculation failed.')
+                            ->body($exception->getMessage())
+                            ->danger()
+                            ->send();
+
+                        return;
+                    }
+
+                    $this->record->refresh();
+
+                    Notification::make()
+                        ->title('Nutrition recalculated.')
+                        ->success()
+                        ->send();
                 }),
             Action::make('publish')
                 ->label('Publish')

@@ -35,7 +35,8 @@ class RecipeInfolist
                 Section::make('Details')
                     ->columns(4)
                     ->schema([
-                        TextEntry::make('servings'),
+                        TextEntry::make('servings')
+                            ->label('Manual Servings'),
                         TextEntry::make('prep_minutes')
                             ->suffix(' min'),
                         TextEntry::make('cook_minutes')
@@ -43,8 +44,24 @@ class RecipeInfolist
                         TextEntry::make('total_minutes')
                             ->suffix(' min'),
                         TextEntry::make('calories_per_serving')
-                            ->label('Calories')
+                            ->label('Source Calories / Serving')
                             ->suffix(' kcal'),
+                    ]),
+                Section::make('Nutrition Totals')
+                    ->columns(4)
+                    ->schema([
+                        TextEntry::make('total_calories')
+                            ->label('Recipe Calories')
+                            ->suffix(' kcal'),
+                        TextEntry::make('total_protein_grams')
+                            ->label('Protein')
+                            ->suffix(' g'),
+                        TextEntry::make('total_carbs_grams')
+                            ->label('Carbs')
+                            ->suffix(' g'),
+                        TextEntry::make('total_fat_grams')
+                            ->label('Fat')
+                            ->suffix(' g'),
                     ]),
                 Section::make('Ingredients')
                     ->schema([

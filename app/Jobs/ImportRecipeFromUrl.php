@@ -32,7 +32,9 @@ class ImportRecipeFromUrl implements ShouldQueue
         try {
             $pastedContent = $this->extractPastedContent($recipeImport->raw_payload);
 
-            if (filled($pastedContent)) {
+            if ($recipeImport->files()->exists()) {
+                $result = $recipeImportService->processScans($recipeImport);
+            } elseif (filled($pastedContent)) {
                 $result = $recipeImportService->processPastedContent($recipeImport, $pastedContent);
             } else {
                 $result = $recipeImportService->process($recipeImport);

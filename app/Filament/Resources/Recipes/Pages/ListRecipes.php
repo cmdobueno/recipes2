@@ -6,10 +6,9 @@ use App\Filament\Resources\Recipes\RecipeResource;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use InvalidArgumentException;
 
 class ListRecipes extends ListRecords
 {
@@ -20,16 +19,11 @@ class ListRecipes extends ListRecords
         return [
             CreateAction::make(),
             Action::make('importFromUrl')
-                ->label('Import URL')
+                ->label('Import Recipe')
                 ->icon('heroicon-o-arrow-down-tray')
-                ->form([
-                    TextInput::make('source_url')
-                        ->label('Recipe URL')
-                        ->url(),
-                    Textarea::make('pasted_content')
-                        ->label('Or paste recipe content')
-                        ->rows(10),
-                ])
+                ->form(fn (): array => RecipeResource::getImportActionForm(
+                    allowScans: auth()->user() instanceof User,
+                ))
                 ->action(function (array $data): void {
                     $user = auth()->user();
 
@@ -37,29 +31,15 @@ class ListRecipes extends ListRecords
                         return;
                     }
 
-                    $sourceUrl = trim((string) ($data['source_url'] ?? ''));
-                    $pastedContent = trim((string) ($data['pasted_content'] ?? ''));
-
-                    if (blank($sourceUrl) && blank($pastedContent)) {
+                    try {
+                        $recipeImport = RecipeResource::handleImportRequest($data, $user);
+                    } catch (InvalidArgumentException $exception) {
                         Notification::make()
-                            ->title('Recipe URL or pasted content is required.')
+                            ->title($exception->getMessage())
                             ->danger()
                             ->send();
 
                         return;
-                    }
-
-                    if (filled($pastedContent)) {
-                        $recipeImport = RecipeResource::queueImportFromPastedContent(
-                            pastedContent: $pastedContent,
-                            requestedByUser: $user,
-                            sourceUrl: filled($sourceUrl) ? $sourceUrl : null,
-                        );
-                    } else {
-                        $recipeImport = RecipeResource::queueImport(
-                            sourceUrl: $sourceUrl,
-                            requestedByUser: $user,
-                        );
                     }
 
                     RecipeResource::notifyImportStatus($recipeImport);

@@ -7,6 +7,7 @@ use App\Enums\RecipeImportMethod;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RecipeImport extends Model
 {
@@ -52,5 +53,13 @@ class RecipeImport extends Model
     public function recipe(): BelongsTo
     {
         return $this->belongsTo(Recipe::class);
+    }
+
+    /**
+     * @return HasMany<RecipeImportFile, $this>
+     */
+    public function files(): HasMany
+    {
+        return $this->hasMany(RecipeImportFile::class)->orderBy('sort_order');
     }
 }
