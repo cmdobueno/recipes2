@@ -2,6 +2,23 @@
     <div class="flex flex-wrap items-center gap-2">
         <a href="{{ route('recipes.index') }}" class="inline-flex items-center rounded-full border border-orange-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-stone-700 transition hover:bg-orange-50">&larr; Back to all recipes</a>
         <a href="{{ route('recipes.print', $recipe->slug) }}" class="inline-flex items-center rounded-full border border-orange-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-stone-700 transition hover:bg-orange-50">Print Recipe</a>
+        <div
+            data-wake-lock-root
+            hidden
+            class="md:hidden"
+        >
+            <button
+                type="button"
+                data-wake-lock-toggle
+                data-default-label="Keep Screen Awake"
+                data-active-label="Screen Awake"
+                aria-pressed="false"
+                class="inline-flex items-center rounded-full border border-orange-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-stone-700 transition hover:bg-orange-50"
+            >
+                Keep Screen Awake
+            </button>
+            <p data-wake-lock-message class="mt-2 max-w-xs text-xs leading-relaxed text-stone-600" hidden></p>
+        </div>
     </div>
 
     <article class="hero-panel reveal-up overflow-hidden rounded-3xl p-6 sm:p-8">
