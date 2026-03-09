@@ -103,9 +103,144 @@ class RecipeImportService
 
     private function parseRecipeData(string $content, ?string $sourceUrl): ?ImportedRecipeData
     {
-        return $this->jsonLdRecipeParser->parse($content, $sourceUrl)
-            ?? $this->htmlRecipeParser->parse($content, $sourceUrl)
+        $jsonLdRecipeData = $this->jsonLdRecipeParser->parse($content, $sourceUrl);
+        $htmlRecipeData = $this->htmlRecipeParser->parse($content, $sourceUrl);
+
+        if ($jsonLdRecipeData !== null) {
+            return $htmlRecipeData !== null
+                ? $this->mergeRecipeData($jsonLdRecipeData, $htmlRecipeData)
+                : $jsonLdRecipeData;
+        }
+
+        return $htmlRecipeData
             ?? $this->openAiRecipeParser->parse($content, $sourceUrl);
+    }
+
+    private function mergeRecipeData(ImportedRecipeData $primary, ImportedRecipeData $secondary): ImportedRecipeData
+    {
+        $ingredientSections = $this->preferSectionedContent($primary->ingredients, $secondary->ingredients);
+        $instructionSections = $this->preferSectionedContent($primary->instructions, $secondary->instructions);
+
+        return new ImportedRecipeData(
+            title: $primary->title,
+            description: $primary->description ?? $secondary->description,
+            servings: $primary->servings ?? $secondary->servings,
+            prepMinutes: $primary->prepMinutes ?? $secondary->prepMinutes,
+            cookMinutes: $primary->cookMinutes ?? $secondary->cookMinutes,
+            totalMinutes: $primary->totalMinutes ?? $secondary->totalMinutes,
+            caloriesPerServing: $primary->caloriesPerServing ?? $secondary->caloriesPerServing,
+            ingredients: $ingredientSections,
+            instructions: $instructionSections,
+            notes: $primary->notes ?? $secondary->notes,
+            sourceUrl: $primary->sourceUrl ?? $secondary->sourceUrl,
+            sourceDomain: $primary->sourceDomain ?? $secondary->sourceDomain,
+            sourceTitle: $primary->sourceTitle ?? $secondary->sourceTitle,
+            categoryName: $primary->categoryName ?? $secondary->categoryName,
+            tags: $primary->tags !== [] ? $primary->tags : $secondary->tags,
+            importMethod: $primary->importMethod,
+            needsReview: $primary->needsReview || $secondary->needsReview,
+            rawPayload: $primary->rawPayload,
+        );
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $primarySections
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $secondarySections
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function preferSectionedContent(array $primarySections, array $secondarySections): array
+    {
+        if (! $this->hasNamedSections($secondarySections)) {
+            return $primarySections;
+        }
+
+        if (! $this->sectionsRoughlyMatch($primarySections, $secondarySections)) {
+            return $primarySections;
+        }
+
+        return $secondarySections;
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $sections
+     */
+    private function hasNamedSections(array $sections): bool
+    {
+        foreach ($sections as $section) {
+            if (filled($section['title'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $sections
+     * @return array<int, string>
+     */
+    private function flattenSectionItems(array $sections): array
+    {
+        $items = [];
+
+        foreach ($sections as $section) {
+            foreach ($section['items'] ?? [] as $item) {
+                if (is_string($item)) {
+                    $items[] = $item;
+                }
+            }
+        }
+
+        return array_values($items);
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $primarySections
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $secondarySections
+     */
+    private function sectionsRoughlyMatch(array $primarySections, array $secondarySections): bool
+    {
+        $primaryItems = $this->normalizedSectionItems($primarySections);
+        $secondaryItems = $this->normalizedSectionItems($secondarySections);
+
+        if ($primaryItems === [] || $secondaryItems === []) {
+            return false;
+        }
+
+        $secondaryMatches = array_intersect($secondaryItems, $primaryItems);
+        $primaryMatches = array_intersect($primaryItems, $secondaryItems);
+
+        $secondaryCoverage = count($secondaryMatches) / count($secondaryItems);
+        $primaryCoverage = count($primaryMatches) / count($primaryItems);
+
+        return $secondaryCoverage >= 0.75 && $primaryCoverage >= 0.5;
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $sections
+     * @return array<int, string>
+     */
+    private function normalizedSectionItems(array $sections): array
+    {
+        return array_values(array_unique(array_filter(array_map(function (string $item): string {
+            $normalized = strtr(Str::lower($item), [
+                '½' => '1/2',
+                '¼' => '1/4',
+                '¾' => '3/4',
+                '⅓' => '1/3',
+                '⅔' => '2/3',
+                '⅛' => '1/8',
+                '⅜' => '3/8',
+                '⅝' => '5/8',
+                '⅞' => '7/8',
+            ]);
+
+            $normalized = preg_replace('/\([^)]*\)/', ' ', $normalized) ?? $normalized;
+            $normalized = preg_replace('/[^a-z0-9\/\s]/', ' ', $normalized) ?? $normalized;
+            $normalized = preg_replace('/\s+/', ' ', trim($normalized)) ?? $normalized;
+
+            return $normalized;
+        }, $this->flattenSectionItems($sections)))));
     }
 
     private function persistImportedRecipe(RecipeImport $recipeImport, ImportedRecipeData $importedRecipeData): Recipe
@@ -312,10 +447,12 @@ class RecipeImportService
 
         $title = array_shift($normalizedLines);
         $section = 'description';
-        $ingredients = [];
-        $instructions = [];
+        $ingredientSections = [];
+        $instructionSections = [];
         $descriptionLines = [];
         $notesLines = [];
+        $currentIngredientSectionTitle = null;
+        $currentInstructionSectionTitle = null;
 
         foreach ($normalizedLines as $line) {
             if (preg_match('/^ingredients?\b[:]?$/i', $line) === 1) {
@@ -344,13 +481,29 @@ class RecipeImportService
             }
 
             if ($section === 'ingredients') {
-                $ingredients[] = $cleanValue;
+                if ($this->isLikelySectionHeadingLine($cleanValue, ordered: false)) {
+                    $currentIngredientSectionTitle = $this->normalizeSectionTitle($cleanValue);
+
+                    continue;
+                }
+
+                $sectionKey = $currentIngredientSectionTitle ?? '__default__';
+                $ingredientSections[$sectionKey]['title'] = $currentIngredientSectionTitle;
+                $ingredientSections[$sectionKey]['items'][] = $cleanValue;
 
                 continue;
             }
 
             if ($section === 'instructions') {
-                $instructions[] = $cleanValue;
+                if ($this->isLikelySectionHeadingLine($cleanValue, ordered: true)) {
+                    $currentInstructionSectionTitle = $this->normalizeSectionTitle($cleanValue);
+
+                    continue;
+                }
+
+                $sectionKey = $currentInstructionSectionTitle ?? '__default__';
+                $instructionSections[$sectionKey]['title'] = $currentInstructionSectionTitle;
+                $instructionSections[$sectionKey]['items'][] = $cleanValue;
 
                 continue;
             }
@@ -364,9 +517,13 @@ class RecipeImportService
             $descriptionLines[] = $cleanValue;
         }
 
-        if ($ingredients === [] && $instructions === []) {
+        if ($ingredientSections === [] && $instructionSections === []) {
             $instructions = $descriptionLines;
             $descriptionLines = [];
+            $instructionSections['__default__'] = [
+                'title' => null,
+                'items' => $instructions,
+            ];
         }
 
         return new ImportedRecipeData(
@@ -377,8 +534,8 @@ class RecipeImportService
             cookMinutes: null,
             totalMinutes: null,
             caloriesPerServing: null,
-            ingredients: array_values(array_unique($ingredients)),
-            instructions: array_values(array_unique($instructions)),
+            ingredients: $this->normalizeSectionCollection($ingredientSections),
+            instructions: $this->normalizeSectionCollection($instructionSections),
             notes: $notesLines !== [] ? implode("\n", $notesLines) : null,
             sourceUrl: $sourceUrl,
             sourceDomain: filled($sourceUrl) ? (parse_url($sourceUrl, PHP_URL_HOST) ?: null) : null,
@@ -391,5 +548,71 @@ class RecipeImportService
                 'fallback' => 'manual_pasted',
             ],
         );
+    }
+
+    private function isLikelySectionHeadingLine(string $line, bool $ordered): bool
+    {
+        $normalizedLine = Str::lower(trim($line, " \t\n\r\0\x0B:"));
+
+        if ($normalizedLine === '' || mb_strlen($normalizedLine) > 48) {
+            return false;
+        }
+
+        if (preg_match('/\d/', $normalizedLine) === 1) {
+            return false;
+        }
+
+        if (! $ordered && preg_match('/\b(cup|cups|tablespoon|tablespoons|tbsp|teaspoon|teaspoons|tsp|ounce|ounces|oz|pound|pounds|lb|lbs|gram|grams|g|kg|ml|liter|liters|can|cans|clove|cloves|slice|slices|pinch)\b/i', $normalizedLine) === 1) {
+            return false;
+        }
+
+        if (preg_match('/^(ingredients?|instructions?|directions?|method|steps?|notes?)$/i', $normalizedLine) === 1) {
+            return false;
+        }
+
+        if ($ordered) {
+            return Str::endsWith($line, ':')
+                || Str::startsWith($normalizedLine, 'for ');
+        }
+
+        return Str::endsWith($line, ':')
+            || Str::startsWith($normalizedLine, 'for ')
+            || preg_match('/\b(bar|bars|base|filling|frosting|glaze|topping|sauce|dough|crust|cake|cookie|brownie|muffin|assembly|garnish)\b/i', $normalizedLine) === 1;
+    }
+
+    private function normalizeSectionTitle(string $title): ?string
+    {
+        $normalizedTitle = trim($title, " \t\n\r\0\x0B:");
+
+        return filled($normalizedTitle) ? $normalizedTitle : null;
+    }
+
+    /**
+     * @param  array<string, array{title: ?string, items: array<int, string>}>  $sections
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function normalizeSectionCollection(array $sections): array
+    {
+        return collect($sections)
+            ->map(function (array $section): ?array {
+                $items = collect($section['items'] ?? [])
+                    ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
+                    ->map(fn (string $item): string => trim($item))
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if ($items === []) {
+                    return null;
+                }
+
+                return [
+                    'title' => $section['title'] ?? null,
+                    'items' => $items,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 }

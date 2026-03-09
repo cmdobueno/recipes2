@@ -36,20 +36,32 @@
 
     <section>
         <h2>Ingredients</h2>
-        <ul>
-            @foreach ($recipe->ingredients ?? [] as $ingredient)
-                <li>{{ $ingredient }}</li>
-            @endforeach
-        </ul>
+        @foreach ($recipe->ingredientSections() as $ingredientSection)
+            @if (filled($ingredientSection['title'] ?? null))
+                <h3>{{ $ingredientSection['title'] }}</h3>
+            @endif
+
+            <ul>
+                @foreach ($ingredientSection['items'] as $ingredient)
+                    <li>{{ $ingredient }}</li>
+                @endforeach
+            </ul>
+        @endforeach
     </section>
 
     <section>
         <h2>Instructions</h2>
-        <ol>
-            @foreach ($recipe->instructions ?? [] as $instruction)
-                <li>{{ $instruction }}</li>
-            @endforeach
-        </ol>
+        @foreach ($recipe->instructionSections() as $instructionSection)
+            @if (filled($instructionSection['title'] ?? null))
+                <h3>{{ $instructionSection['title'] }}</h3>
+            @endif
+
+            <ol>
+                @foreach ($instructionSection['items'] as $instruction)
+                    <li>{{ $instruction }}</li>
+                @endforeach
+            </ol>
+        @endforeach
     </section>
 
     @if (filled($recipe->notes))

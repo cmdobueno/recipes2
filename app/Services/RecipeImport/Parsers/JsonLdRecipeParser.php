@@ -32,7 +32,7 @@ class JsonLdRecipeParser
                 continue;
             }
 
-            $ingredients = $this->cleanStringArray($recipeData['recipeIngredient'] ?? []);
+            $ingredients = $this->wrapInDefaultSection($this->cleanStringArray($recipeData['recipeIngredient'] ?? []));
             $instructions = $this->extractInstructions($recipeData['recipeInstructions'] ?? []);
             $sourceTitle = $this->extractHtmlTitle($html) ?? $title;
 
@@ -173,14 +173,15 @@ class JsonLdRecipeParser
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, array{title: ?string, items: array<int, string>}>
      */
     private function extractInstructions(mixed $rawInstructions): array
     {
-        $instructions = [];
+        $defaultSectionItems = [];
+        $sections = [];
 
         if (is_string($rawInstructions)) {
-            return $this->cleanStringArray([$rawInstructions]);
+            return $this->wrapInDefaultSection($this->cleanStringArray([$rawInstructions]));
         }
 
         if (! is_array($rawInstructions)) {
@@ -189,16 +190,19 @@ class JsonLdRecipeParser
 
         foreach ($rawInstructions as $instruction) {
             if (is_string($instruction)) {
-                $instructions[] = $instruction;
+                $defaultSectionItems[] = $instruction;
 
                 continue;
             }
 
             if (is_array($instruction)) {
+                $instructionType = $instruction['@type'] ?? null;
+                $isHowToSection = is_string($instructionType) && strcasecmp($instructionType, 'HowToSection') === 0;
                 $instructionText = $this->extractString($instruction['text'] ?? null);
+                $sectionItems = [];
 
                 if (filled($instructionText)) {
-                    $instructions[] = $instructionText;
+                    $sectionItems[] = $instructionText;
                 }
 
                 if (array_key_exists('itemListElement', $instruction) && is_array($instruction['itemListElement'])) {
@@ -207,15 +211,41 @@ class JsonLdRecipeParser
                             $stepText = $this->extractString($instructionStep['text'] ?? null);
 
                             if (filled($stepText)) {
-                                $instructions[] = $stepText;
+                                $sectionItems[] = $stepText;
                             }
                         }
                     }
                 }
+
+                $sectionItems = $this->cleanStringArray($sectionItems);
+
+                if ($sectionItems === []) {
+                    continue;
+                }
+
+                if ($isHowToSection) {
+                    $sections[] = [
+                        'title' => $this->extractString($instruction['name'] ?? null),
+                        'items' => $sectionItems,
+                    ];
+
+                    continue;
+                }
+
+                $defaultSectionItems = [...$defaultSectionItems, ...$sectionItems];
             }
         }
 
-        return $this->cleanStringArray($instructions);
+        $defaultSectionItems = $this->cleanStringArray($defaultSectionItems);
+
+        if ($defaultSectionItems !== []) {
+            array_unshift($sections, [
+                'title' => null,
+                'items' => $defaultSectionItems,
+            ]);
+        }
+
+        return array_values($sections);
     }
 
     /**
@@ -262,7 +292,7 @@ class JsonLdRecipeParser
                 continue;
             }
 
-            $stringValue = trim(strip_tags($value));
+            $stringValue = $this->sanitizeImportedLine((string) strip_tags($value));
 
             if (blank($stringValue)) {
                 continue;
@@ -274,6 +304,13 @@ class JsonLdRecipeParser
         return array_values(array_unique($cleaned));
     }
 
+    private function sanitizeImportedLine(string $value): string
+    {
+        $sanitizedValue = preg_replace('/^[\s\-\*\x{2022}\x{25E6}\x{25AA}\x{25AB}\x{2610}\x{2611}\x{2612}\x{274F}\x{2751}\x{2752}\x{203A}\x{00BB}]+\s*/u', '', trim($value)) ?? trim($value);
+
+        return trim($sanitizedValue);
+    }
+
     private function extractHtmlTitle(string $html): ?string
     {
         if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $matches) !== 1) {
@@ -283,5 +320,21 @@ class JsonLdRecipeParser
         $title = trim(strip_tags($matches[1]));
 
         return filled($title) ? $title : null;
+    }
+
+    /**
+     * @param  array<int, string>  $items
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function wrapInDefaultSection(array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        return [[
+            'title' => null,
+            'items' => $items,
+        ]];
     }
 }

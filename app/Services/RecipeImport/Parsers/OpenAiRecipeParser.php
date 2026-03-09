@@ -35,7 +35,7 @@ class OpenAiRecipeParser
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Extract recipe details from provided page content. Respond with strict JSON only.',
+                                'text' => 'Extract recipe details from provided page content. Preserve ingredient and instruction section headings when they exist, and do not merge separate phases like Bars, Filling, Frosting, Topping, Dough, or Glaze into one section. Use a null section title only when the recipe is truly unsectioned. Respond with strict JSON only.',
                             ],
                         ],
                     ],
@@ -64,13 +64,35 @@ class OpenAiRecipeParser
                                 'cook_minutes' => ['type' => ['integer', 'null']],
                                 'total_minutes' => ['type' => ['integer', 'null']],
                                 'calories_per_serving' => ['type' => ['integer', 'null']],
-                                'ingredients' => [
+                                'ingredient_sections' => [
                                     'type' => 'array',
-                                    'items' => ['type' => 'string'],
+                                    'items' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            'title' => ['type' => ['string', 'null']],
+                                            'items' => [
+                                                'type' => 'array',
+                                                'items' => ['type' => 'string'],
+                                            ],
+                                        ],
+                                        'required' => ['title', 'items'],
+                                        'additionalProperties' => false,
+                                    ],
                                 ],
-                                'instructions' => [
+                                'instruction_sections' => [
                                     'type' => 'array',
-                                    'items' => ['type' => 'string'],
+                                    'items' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            'title' => ['type' => ['string', 'null']],
+                                            'items' => [
+                                                'type' => 'array',
+                                                'items' => ['type' => 'string'],
+                                            ],
+                                        ],
+                                        'required' => ['title', 'items'],
+                                        'additionalProperties' => false,
+                                    ],
                                 ],
                                 'notes' => ['type' => ['string', 'null']],
                                 'source_title' => ['type' => ['string', 'null']],
@@ -88,8 +110,8 @@ class OpenAiRecipeParser
                                 'cook_minutes',
                                 'total_minutes',
                                 'calories_per_serving',
-                                'ingredients',
-                                'instructions',
+                                'ingredient_sections',
+                                'instruction_sections',
                                 'notes',
                                 'source_title',
                                 'category',
@@ -129,8 +151,8 @@ class OpenAiRecipeParser
             cookMinutes: $this->nullableInt($decoded['cook_minutes'] ?? null),
             totalMinutes: $this->nullableInt($decoded['total_minutes'] ?? null),
             caloriesPerServing: $this->nullableInt($decoded['calories_per_serving'] ?? null),
-            ingredients: $this->stringArray($decoded['ingredients'] ?? []),
-            instructions: $this->stringArray($decoded['instructions'] ?? []),
+            ingredients: $this->sectionArray($decoded['ingredient_sections'] ?? []),
+            instructions: $this->sectionArray($decoded['instruction_sections'] ?? []),
             notes: $this->nullableString($decoded['notes'] ?? null),
             sourceUrl: $sourceUrl,
             sourceDomain: filled($sourceUrl) ? (parse_url($sourceUrl, PHP_URL_HOST) ?: null) : null,
@@ -219,7 +241,7 @@ class OpenAiRecipeParser
                 continue;
             }
 
-            $stringValue = trim($arrayItem);
+            $stringValue = $this->sanitizeImportedLine($arrayItem);
 
             if (filled($stringValue)) {
                 $cleaned[] = $stringValue;
@@ -227,5 +249,43 @@ class OpenAiRecipeParser
         }
 
         return array_values(array_unique($cleaned));
+    }
+
+    private function sanitizeImportedLine(string $value): string
+    {
+        $sanitizedValue = preg_replace('/^[\s\-\*\x{2022}\x{25E6}\x{25AA}\x{25AB}\x{2610}\x{2611}\x{2612}\x{274F}\x{2751}\x{2752}\x{203A}\x{00BB}]+\s*/u', '', trim($value)) ?? trim($value);
+
+        return trim($sanitizedValue);
+    }
+
+    /**
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function sectionArray(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $sections = [];
+
+        foreach ($value as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $items = $this->stringArray($section['items'] ?? []);
+
+            if ($items === []) {
+                continue;
+            }
+
+            $sections[] = [
+                'title' => $this->nullableString($section['title'] ?? null),
+                'items' => $items,
+            ];
+        }
+
+        return array_values($sections);
     }
 }

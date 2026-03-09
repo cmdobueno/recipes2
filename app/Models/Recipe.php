@@ -141,6 +141,38 @@ class Recipe extends Model
         return $this->macroPerServing($this->total_fat_grams);
     }
 
+    /**
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    public function ingredientSections(): array
+    {
+        return $this->normalizeSections($this->ingredients);
+    }
+
+    /**
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    public function instructionSections(): array
+    {
+        return $this->normalizeSections($this->instructions);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function flattenedIngredients(): array
+    {
+        return $this->flattenSections($this->ingredientSections());
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function flattenedInstructions(): array
+    {
+        return $this->flattenSections($this->instructionSections());
+    }
+
     private function macroPerServing(string|float|int|null $value): ?float
     {
         if ($value === null || empty($this->servings)) {
@@ -148,5 +180,96 @@ class Recipe extends Model
         }
 
         return round(((float) $value) / $this->servings, 1);
+    }
+
+    /**
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function normalizeSections(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $sections = [];
+
+        foreach ($value as $section) {
+            if (is_string($section)) {
+                return [[
+                    'title' => null,
+                    'items' => $this->cleanSectionItems($value),
+                ]];
+            }
+
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $items = $this->cleanSectionItems($section['items'] ?? []);
+
+            if ($items === []) {
+                continue;
+            }
+
+            $title = $section['title'] ?? null;
+            $title = is_string($title) && filled(trim($title)) ? trim($title) : null;
+
+            $sections[] = [
+                'title' => $title,
+                'items' => $items,
+            ];
+        }
+
+        return array_values($sections);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function cleanSectionItems(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach ($value as $item) {
+            if (! is_string($item)) {
+                continue;
+            }
+
+            $trimmedItem = $this->sanitizeImportedLine($item);
+
+            if ($trimmedItem !== '') {
+                $items[] = $trimmedItem;
+            }
+        }
+
+        return array_values($items);
+    }
+
+    private function sanitizeImportedLine(string $value): string
+    {
+        $sanitizedValue = preg_replace('/^[\s\-\*\x{2022}\x{25E6}\x{25AA}\x{25AB}\x{2610}\x{2611}\x{2612}\x{274F}\x{2751}\x{2752}\x{203A}\x{00BB}]+\s*/u', '', trim($value)) ?? trim($value);
+
+        return trim($sanitizedValue);
+    }
+
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $sections
+     * @return array<int, string>
+     */
+    private function flattenSections(array $sections): array
+    {
+        $items = [];
+
+        foreach ($sections as $section) {
+            foreach ($section['items'] as $item) {
+                $items[] = $item;
+            }
+        }
+
+        return array_values($items);
     }
 }

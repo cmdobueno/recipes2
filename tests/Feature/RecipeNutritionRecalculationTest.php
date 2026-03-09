@@ -29,8 +29,14 @@ it('recalculates recipe nutrition totals on demand', function () {
         ->once()
         ->withArgs(function (ImportedRecipeData $data): bool {
             return $data->title === 'Turkey Chili'
-                && $data->ingredients === ['1 lb turkey', '2 cans beans']
-                && $data->instructions === ['Brown turkey', 'Simmer with beans'];
+                && $data->ingredients === [[
+                    'title' => null,
+                    'items' => ['1 lb turkey', '2 cans beans'],
+                ]]
+                && $data->instructions === [[
+                    'title' => null,
+                    'items' => ['Brown turkey', 'Simmer with beans'],
+                ]];
         })
         ->andReturn(new RecipeNutritionEstimateData(
             totalCalories: 960,

@@ -49,6 +49,29 @@ it('shows published recipe details to guests', function () {
         ->assertSee("/recipes/{$recipe->slug}/print");
 });
 
+it('strips imported checkbox characters from ingredient display while keeping the visual bullet', function () {
+    $recipe = publishedRecipe([
+        'title' => 'Checkbox Cleanup',
+        'slug' => 'checkbox-cleanup',
+        'ingredients' => [[
+            'title' => null,
+            'items' => ['☐ 1 cup sugar', '☑ 2 eggs'],
+        ]],
+        'instructions' => [[
+            'title' => null,
+            'items' => ['Mix everything.'],
+        ]],
+    ]);
+
+    $this->get("/recipes/{$recipe->slug}")
+        ->assertSuccessful()
+        ->assertSee('1 cup sugar')
+        ->assertSee('2 eggs')
+        ->assertDontSee('☐ 1 cup sugar')
+        ->assertDontSee('☑ 2 eggs')
+        ->assertSee('bg-orange-500', false);
+});
+
 it('returns 404 for unpublished recipe details', function () {
     $recipe = Recipe::factory()->create([
         'slug' => 'private-recipe',

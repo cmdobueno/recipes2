@@ -10,6 +10,7 @@ use App\Models\RecipeImportFile;
 use App\Models\User;
 use App\Services\RecipeImport\Parsers\ScanRecipeParser;
 use App\Services\RecipeImport\RecipeImportService;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -37,8 +38,14 @@ it('queues scanned image imports and stores ordered scan files', function () {
         cookMinutes: 45,
         totalMinutes: 60,
         caloriesPerServing: null,
-        ingredients: ['2 cups flour', '1 cup sugar'],
-        instructions: ['Mix ingredients', 'Bake'],
+        ingredients: [[
+            'title' => 'Cake',
+            'items' => ['2 cups flour', '1 cup sugar'],
+        ]],
+        instructions: [[
+            'title' => 'Cake',
+            'items' => ['Mix ingredients', 'Bake'],
+        ]],
         notes: null,
         sourceUrl: null,
         sourceDomain: null,
@@ -207,8 +214,14 @@ it('uses the dedicated scan model for scanned recipe extraction', function () {
                 'prep_minutes' => 20,
                 'cook_minutes' => 90,
                 'total_minutes' => 110,
-                'ingredients' => ['1 lb beef', '2 cans beans'],
-                'instructions' => ['Brown the beef.', 'Simmer everything together.'],
+                'ingredient_sections' => [[
+                    'title' => 'Chili',
+                    'items' => ['1 lb beef', '2 cans beans'],
+                ]],
+                'instruction_sections' => [[
+                    'title' => 'Chili',
+                    'items' => ['Brown the beef.', 'Simmer everything together.'],
+                ]],
                 'notes' => null,
                 'category' => 'Dinner',
                 'tags' => ['Family'],
@@ -220,13 +233,18 @@ it('uses the dedicated scan model for scanned recipe extraction', function () {
 
     expect($result?->title)->toBe('Handwritten Chili');
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+    Http::assertSent(function (Request $request): bool {
         $required = data_get($request->data(), 'text.format.schema.required', []);
+        $prompt = data_get($request->data(), 'input.0.content.0.text', '');
 
         return $request->url() === 'https://api.openai.com/v1/responses'
             && $request['model'] === 'gpt-4.1-mini'
             && in_array('description', $required, true)
             && in_array('notes', $required, true)
-            && in_array('category', $required, true);
+            && in_array('category', $required, true)
+            && in_array('ingredient_sections', $required, true)
+            && in_array('instruction_sections', $required, true)
+            && is_string($prompt)
+            && str_contains($prompt, 'Preserve ingredient and instruction section headings');
     });
 });

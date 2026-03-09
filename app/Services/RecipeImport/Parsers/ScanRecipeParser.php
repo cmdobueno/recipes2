@@ -46,7 +46,7 @@ class ScanRecipeParser
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Extract exactly one recipe from the provided scanned pages. Do not estimate servings. Return strict JSON only.',
+                                'text' => 'Extract exactly one recipe from the provided scanned pages. Preserve ingredient and instruction section headings when they exist, and do not merge separate phases like Bars, Filling, Frosting, Topping, Dough, or Glaze into one section. Use a null section title only when the recipe is truly unsectioned. Do not estimate servings. Return strict JSON only.',
                             ],
                         ],
                     ],
@@ -68,13 +68,35 @@ class ScanRecipeParser
                                 'prep_minutes' => ['type' => ['integer', 'null']],
                                 'cook_minutes' => ['type' => ['integer', 'null']],
                                 'total_minutes' => ['type' => ['integer', 'null']],
-                                'ingredients' => [
+                                'ingredient_sections' => [
                                     'type' => 'array',
-                                    'items' => ['type' => 'string'],
+                                    'items' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            'title' => ['type' => ['string', 'null']],
+                                            'items' => [
+                                                'type' => 'array',
+                                                'items' => ['type' => 'string'],
+                                            ],
+                                        ],
+                                        'required' => ['title', 'items'],
+                                        'additionalProperties' => false,
+                                    ],
                                 ],
-                                'instructions' => [
+                                'instruction_sections' => [
                                     'type' => 'array',
-                                    'items' => ['type' => 'string'],
+                                    'items' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            'title' => ['type' => ['string', 'null']],
+                                            'items' => [
+                                                'type' => 'array',
+                                                'items' => ['type' => 'string'],
+                                            ],
+                                        ],
+                                        'required' => ['title', 'items'],
+                                        'additionalProperties' => false,
+                                    ],
                                 ],
                                 'notes' => ['type' => ['string', 'null']],
                                 'category' => ['type' => ['string', 'null']],
@@ -89,8 +111,8 @@ class ScanRecipeParser
                                 'prep_minutes',
                                 'cook_minutes',
                                 'total_minutes',
-                                'ingredients',
-                                'instructions',
+                                'ingredient_sections',
+                                'instruction_sections',
                                 'notes',
                                 'category',
                                 'tags',
@@ -135,8 +157,8 @@ class ScanRecipeParser
             cookMinutes: $this->nullableInt($decoded['cook_minutes'] ?? null),
             totalMinutes: $this->nullableInt($decoded['total_minutes'] ?? null),
             caloriesPerServing: null,
-            ingredients: $this->stringArray($decoded['ingredients'] ?? []),
-            instructions: $this->stringArray($decoded['instructions'] ?? []),
+            ingredients: $this->sectionArray($decoded['ingredient_sections'] ?? []),
+            instructions: $this->sectionArray($decoded['instruction_sections'] ?? []),
             notes: $this->nullableString($decoded['notes'] ?? null),
             sourceUrl: null,
             sourceDomain: null,
@@ -158,7 +180,7 @@ class ScanRecipeParser
         $content = [
             [
                 'type' => 'input_text',
-                'text' => 'These are ordered scanned recipe pages. Preserve ingredient and instruction order across all pages.',
+                'text' => 'These are ordered scanned recipe pages. Preserve ingredient and instruction order across all pages, and keep any ingredient or instruction section headings attached to the correct items.',
             ],
         ];
 
@@ -298,7 +320,7 @@ class ScanRecipeParser
                 continue;
             }
 
-            $stringValue = trim($arrayItem);
+            $stringValue = $this->sanitizeImportedLine($arrayItem);
 
             if (filled($stringValue)) {
                 $cleaned[] = $stringValue;
@@ -306,6 +328,44 @@ class ScanRecipeParser
         }
 
         return array_values(array_unique($cleaned));
+    }
+
+    private function sanitizeImportedLine(string $value): string
+    {
+        $sanitizedValue = preg_replace('/^[\s\-\*\x{2022}\x{25E6}\x{25AA}\x{25AB}\x{2610}\x{2611}\x{2612}\x{274F}\x{2751}\x{2752}\x{203A}\x{00BB}]+\s*/u', '', trim($value)) ?? trim($value);
+
+        return trim($sanitizedValue);
+    }
+
+    /**
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private function sectionArray(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $sections = [];
+
+        foreach ($value as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $items = $this->stringArray($section['items'] ?? []);
+
+            if ($items === []) {
+                continue;
+            }
+
+            $sections[] = [
+                'title' => $this->nullableString($section['title'] ?? null),
+                'items' => $items,
+            ];
+        }
+
+        return array_values($sections);
     }
 
     private function isPdf(?string $mimeType): bool

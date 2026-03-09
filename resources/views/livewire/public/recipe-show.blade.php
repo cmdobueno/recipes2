@@ -64,26 +64,46 @@
     <section class="grid gap-6 lg:grid-cols-[0.95fr,1.05fr]">
         <div class="filter-panel reveal-up rounded-2xl p-5 sm:p-6" style="--delay: 80ms">
             <h2 class="brand-title text-3xl font-semibold text-stone-900">Ingredients</h2>
-            <ul class="mt-4 space-y-2.5 text-sm leading-relaxed text-stone-800 sm:text-base">
-                @foreach ($recipe->ingredients ?? [] as $ingredient)
-                    <li class="flex items-start gap-2">
-                        <span class="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500"></span>
-                        <span>{{ $ingredient }}</span>
-                    </li>
+            <div class="mt-4 space-y-5">
+                @foreach ($recipe->ingredientSections() as $ingredientSection)
+                    <section class="space-y-2.5">
+                        @if (filled($ingredientSection['title'] ?? null))
+                            <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600 sm:text-base">{{ $ingredientSection['title'] }}</h3>
+                        @endif
+
+                        <ul class="space-y-2.5 text-sm leading-relaxed text-stone-800 sm:text-base">
+                            @foreach ($ingredientSection['items'] as $ingredient)
+                                <li class="flex items-start gap-2">
+                                    <span class="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500"></span>
+                                    <span>{{ $ingredient }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </section>
                 @endforeach
-            </ul>
+            </div>
         </div>
 
         <div class="filter-panel reveal-up rounded-2xl p-5 sm:p-6" style="--delay: 140ms">
             <h2 class="brand-title text-3xl font-semibold text-stone-900">Instructions</h2>
-            <ol class="mt-4 space-y-3">
-                @foreach ($recipe->instructions ?? [] as $instruction)
-                    <li class="flex gap-3">
-                        <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-bold text-white">{{ $loop->iteration }}</span>
-                        <p class="text-sm leading-relaxed text-stone-800 sm:text-base">{{ $instruction }}</p>
-                    </li>
+            <div class="mt-4 space-y-5">
+                @foreach ($recipe->instructionSections() as $instructionSection)
+                    <section class="space-y-3">
+                        @if (filled($instructionSection['title'] ?? null))
+                            <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600 sm:text-base">{{ $instructionSection['title'] }}</h3>
+                        @endif
+
+                        <ol class="space-y-3">
+                            @foreach ($instructionSection['items'] as $instruction)
+                                <li class="flex gap-3">
+                                    <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-bold text-white">{{ $loop->iteration }}</span>
+                                    <p class="text-sm leading-relaxed text-stone-800 sm:text-base">{{ $instruction }}</p>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </section>
                 @endforeach
-            </ol>
+            </div>
         </div>
     </section>
 

@@ -112,48 +112,25 @@ class RecipeForm
                     ]),
                 Section::make('Ingredients')
                     ->schema([
-                        Repeater::make('ingredients')
-                            ->schema([
-                                TextInput::make('value')
-                                    ->label('Ingredient')
-                                    ->required(),
-                            ])
-                            ->addActionLabel('Add ingredient')
-                            ->defaultItems(0)
-                            ->columnSpanFull()
-                            ->dehydrateStateUsing(fn (?array $state): array => collect($state)->pluck('value')->filter()->values()->all())
-                            ->afterStateHydrated(function (Repeater $component, mixed $state): void {
-                                if (! is_array($state)) {
-                                    $component->state([]);
-
-                                    return;
-                                }
-
-                                $component->state(collect($state)->map(fn (mixed $value): array => ['value' => $value])->values()->all());
-                            }),
+                        self::sectionsRepeater(
+                            field: 'ingredients',
+                            titleLabel: 'Section title',
+                            itemLabel: 'Ingredient',
+                            addSectionLabel: 'Add ingredient section',
+                            addItemLabel: 'Add ingredient',
+                            itemField: TextInput::make('value')->label('Ingredient')->required(),
+                        ),
                     ]),
                 Section::make('Instructions')
                     ->schema([
-                        Repeater::make('instructions')
-                            ->schema([
-                                Textarea::make('value')
-                                    ->label('Step')
-                                    ->required()
-                                    ->rows(2),
-                            ])
-                            ->addActionLabel('Add step')
-                            ->defaultItems(0)
-                            ->columnSpanFull()
-                            ->dehydrateStateUsing(fn (?array $state): array => collect($state)->pluck('value')->filter()->values()->all())
-                            ->afterStateHydrated(function (Repeater $component, mixed $state): void {
-                                if (! is_array($state)) {
-                                    $component->state([]);
-
-                                    return;
-                                }
-
-                                $component->state(collect($state)->map(fn (mixed $value): array => ['value' => $value])->values()->all());
-                            }),
+                        self::sectionsRepeater(
+                            field: 'instructions',
+                            titleLabel: 'Section title',
+                            itemLabel: 'Step',
+                            addSectionLabel: 'Add instruction section',
+                            addItemLabel: 'Add step',
+                            itemField: Textarea::make('value')->label('Step')->required()->rows(2),
+                        ),
                     ]),
                 Section::make('Metadata')
                     ->columns(4)
@@ -244,5 +221,134 @@ class RecipeForm
                             ->default(false),
                     ]),
             ]);
+    }
+
+    private static function sectionsRepeater(
+        string $field,
+        string $titleLabel,
+        string $itemLabel,
+        string $addSectionLabel,
+        string $addItemLabel,
+        TextInput|Textarea $itemField,
+    ): Repeater {
+        return Repeater::make($field)
+            ->schema([
+                TextInput::make('title')
+                    ->label($titleLabel)
+                    ->maxLength(255)
+                    ->placeholder('Optional'),
+                Repeater::make('items')
+                    ->label($itemLabel.'s')
+                    ->schema([$itemField])
+                    ->reorderable()
+                    ->defaultItems(0)
+                    ->addActionLabel($addItemLabel)
+                    ->dehydrateStateUsing(fn (?array $state): array => collect($state)->pluck('value')->filter(fn (mixed $value): bool => is_string($value) && filled(trim($value)))->map(fn (string $value): string => trim($value))->values()->all())
+                    ->afterStateHydrated(function (Repeater $component, mixed $state): void {
+                        if (! is_array($state)) {
+                            $component->state([]);
+
+                            return;
+                        }
+
+                        $component->state(collect($state)->map(fn (mixed $value): array => ['value' => $value])->values()->all());
+                    })
+                    ->columnSpanFull(),
+            ])
+            ->reorderable()
+            ->collapsible()
+            ->defaultItems(1)
+            ->addActionLabel($addSectionLabel)
+            ->itemLabel(fn (array $state): string => filled($state['title'] ?? null) ? (string) $state['title'] : 'Untitled section')
+            ->dehydrateStateUsing(fn (?array $state): array => self::dehydrateSections($state))
+            ->afterStateHydrated(function (Repeater $component, mixed $state): void {
+                $component->state(self::hydrateSections($state));
+            })
+            ->columnSpanFull();
+    }
+
+    /**
+     * @param  array<int, mixed>|null  $state
+     * @return array<int, array{title: ?string, items: array<int, string>}>
+     */
+    private static function dehydrateSections(?array $state): array
+    {
+        return collect($state)
+            ->map(function (mixed $section): ?array {
+                if (! is_array($section)) {
+                    return null;
+                }
+
+                $items = collect($section['items'] ?? [])
+                    ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
+                    ->map(fn (string $item): string => trim($item))
+                    ->values()
+                    ->all();
+
+                if ($items === []) {
+                    return null;
+                }
+
+                $title = $section['title'] ?? null;
+                $title = is_string($title) && filled(trim($title)) ? trim($title) : null;
+
+                return [
+                    'title' => $title,
+                    'items' => $items,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{title: ?string, items: array<int, array{value: string}>}>
+     */
+    private static function hydrateSections(mixed $state): array
+    {
+        if (! is_array($state)) {
+            return [];
+        }
+
+        $containsFlatItems = collect($state)->contains(fn (mixed $value): bool => is_string($value));
+
+        if ($containsFlatItems) {
+            $items = collect($state)
+                ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
+                ->map(fn (string $item): array => ['value' => trim($item)])
+                ->values()
+                ->all();
+
+            return $items === [] ? [] : [[
+                'title' => null,
+                'items' => $items,
+            ]];
+        }
+
+        return collect($state)
+            ->map(function (mixed $section): ?array {
+                if (! is_array($section)) {
+                    return null;
+                }
+
+                $items = collect($section['items'] ?? [])
+                    ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
+                    ->map(fn (string $item): array => ['value' => trim($item)])
+                    ->values()
+                    ->all();
+
+                if ($items === []) {
+                    return null;
+                }
+
+                return [
+                    'title' => is_string($section['title'] ?? null) && filled(trim((string) $section['title'])) ? trim((string) $section['title']) : null,
+                    'items' => $items,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 }

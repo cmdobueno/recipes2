@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Recipes\Schemas;
 
 use App\Enums\RecipeImportMethod;
 use App\Enums\RecipeImportStatus;
+use App\Models\Recipe;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -66,13 +67,13 @@ class RecipeInfolist
                 Section::make('Ingredients')
                     ->schema([
                         TextEntry::make('ingredients')
-                            ->formatStateUsing(fn (mixed $state): string => self::toUnorderedList($state))
+                            ->formatStateUsing(fn (mixed $state, Recipe $record): string => self::toSectionedList($record->ingredientSections(), ordered: false))
                             ->html(),
                     ]),
                 Section::make('Instructions')
                     ->schema([
                         TextEntry::make('instructions')
-                            ->formatStateUsing(fn (mixed $state): string => self::toOrderedList($state))
+                            ->formatStateUsing(fn (mixed $state, Recipe $record): string => self::toSectionedList($record->instructionSections(), ordered: true))
                             ->html(),
                     ]),
                 Section::make('Import')
@@ -102,41 +103,32 @@ class RecipeInfolist
             ]);
     }
 
-    private static function toUnorderedList(mixed $values): string
+    /**
+     * @param  array<int, array{title: ?string, items: array<int, string>}>  $sections
+     */
+    private static function toSectionedList(array $sections, bool $ordered): string
     {
-        if (is_string($values)) {
-            $values = [$values];
+        if ($sections === []) {
+            return $ordered ? '<p>No instructions provided.</p>' : '<p>No ingredients provided.</p>';
         }
 
-        if (! is_array($values)) {
-            $values = [];
+        $listTag = $ordered ? 'ol' : 'ul';
+        $listClass = $ordered ? 'list-decimal pl-5' : 'list-disc pl-5';
+        $html = '';
+
+        foreach ($sections as $section) {
+            if (filled($section['title'] ?? null)) {
+                $html .= '<h4 class="mt-4 font-semibold">'.e((string) $section['title']).'</h4>';
+            }
+
+            $items = array_map(
+                static fn (string $value): string => '<li>'.e($value).'</li>',
+                $section['items'] ?? [],
+            );
+
+            $html .= "<{$listTag} class=\"{$listClass}\">".implode('', $items)."</{$listTag}>";
         }
 
-        if ($values === []) {
-            return '<p>No ingredients provided.</p>';
-        }
-
-        $items = array_map(static fn (string $value): string => '<li>'.e($value).'</li>', $values);
-
-        return '<ul class="list-disc pl-5">'.implode('', $items).'</ul>';
-    }
-
-    private static function toOrderedList(mixed $values): string
-    {
-        if (is_string($values)) {
-            $values = [$values];
-        }
-
-        if (! is_array($values)) {
-            $values = [];
-        }
-
-        if ($values === []) {
-            return '<p>No instructions provided.</p>';
-        }
-
-        $items = array_map(static fn (string $value): string => '<li>'.e($value).'</li>', $values);
-
-        return '<ol class="list-decimal pl-5">'.implode('', $items).'</ol>';
+        return $html;
     }
 }

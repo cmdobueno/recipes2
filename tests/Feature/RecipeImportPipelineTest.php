@@ -37,7 +37,7 @@ it('imports via json-ld first and auto-creates missing tags', function () {
     $jsonParser->shouldReceive('parse')->once()->andReturn(importedRecipeData(RecipeImportMethod::JsonLd, false));
 
     $htmlParser = \Mockery::mock(HtmlRecipeParser::class);
-    $htmlParser->shouldNotReceive('parse');
+    $htmlParser->shouldReceive('parse')->once()->andReturnNull();
 
     $openAiParser = \Mockery::mock(OpenAiRecipeParser::class);
     $openAiParser->shouldNotReceive('parse');
@@ -93,6 +93,107 @@ it('falls back to html parsing when json-ld is missing', function () {
 
     expect($result['recipe']->import_method)->toBe(RecipeImportMethod::Html);
     expect($result['recipe']->import_status)->toBe(RecipeImportStatus::NeedsReview);
+});
+
+it('supplements json-ld imports with html ingredient sections when the html structure is better', function () {
+    $user = User::factory()->create();
+    $sourceUrl = 'https://example.com/sectioned-html';
+
+    Http::fake([
+        $sourceUrl => Http::response('<html><title>Recipe</title></html>', 200),
+    ]);
+
+    $recipeImport = RecipeImport::factory()->create([
+        'source_url' => $sourceUrl,
+        'requested_by_user_id' => $user->id,
+        'recipe_id' => null,
+        'status' => RecipeImportAttemptStatus::Queued,
+    ]);
+
+    $jsonParser = \Mockery::mock(JsonLdRecipeParser::class);
+    $jsonParser->shouldReceive('parse')->once()->andReturn(new ImportedRecipeData(
+        title: 'Cranberry Bliss Bars',
+        description: 'Copycat bars.',
+        servings: 8,
+        prepMinutes: 20,
+        cookMinutes: 18,
+        totalMinutes: 38,
+        caloriesPerServing: 420,
+        ingredients: [[
+            'title' => null,
+            'items' => [
+                '1 cup butter',
+                '2 large eggs',
+                '8 oz cream cheese',
+                '2 cups powdered sugar (sifted)',
+            ],
+        ]],
+        instructions: [[
+            'title' => null,
+            'items' => ['Mix everything', 'Bake'],
+        ]],
+        notes: null,
+        sourceUrl: $sourceUrl,
+        sourceDomain: 'example.com',
+        sourceTitle: 'Example Source',
+        categoryName: 'Dessert',
+        tags: ['Bars'],
+        importMethod: RecipeImportMethod::JsonLd,
+        needsReview: false,
+        rawPayload: ['source' => 'json-ld'],
+    ));
+
+    $htmlParser = \Mockery::mock(HtmlRecipeParser::class);
+    $htmlParser->shouldReceive('parse')->once()->andReturn(new ImportedRecipeData(
+        title: 'Cranberry Bliss Bars',
+        description: 'Copycat bars.',
+        servings: null,
+        prepMinutes: null,
+        cookMinutes: null,
+        totalMinutes: null,
+        caloriesPerServing: null,
+        ingredients: [
+            [
+                'title' => 'Bars',
+                'items' => ['1 cup butter', '2 large eggs'],
+            ],
+            [
+                'title' => 'Frosting and Topping',
+                'items' => ['8 oz cream cheese', '2 cups powdered sugar'],
+            ],
+        ],
+        instructions: [[
+            'title' => null,
+            'items' => ['Mix everything', 'Bake'],
+        ]],
+        notes: null,
+        sourceUrl: $sourceUrl,
+        sourceDomain: 'example.com',
+        sourceTitle: 'Example Source',
+        categoryName: 'Dessert',
+        tags: ['Bars'],
+        importMethod: RecipeImportMethod::Html,
+        needsReview: true,
+        rawPayload: ['source' => 'html'],
+    ));
+
+    $openAiParser = \Mockery::mock(OpenAiRecipeParser::class);
+    $openAiParser->shouldNotReceive('parse');
+
+    $service = new RecipeImportService($jsonParser, $htmlParser, $openAiParser);
+    $result = $service->process($recipeImport);
+
+    expect($result['recipe']->import_method)->toBe(RecipeImportMethod::JsonLd);
+    expect($result['recipe']->ingredientSections())->toBe([
+        [
+            'title' => 'Bars',
+            'items' => ['1 cup butter', '2 large eggs'],
+        ],
+        [
+            'title' => 'Frosting and Topping',
+            'items' => ['8 oz cream cheese', '2 cups powdered sugar'],
+        ],
+    ]);
 });
 
 it('falls back to ai parsing when json-ld and html parsing fail', function () {
@@ -238,8 +339,14 @@ it('imports from pasted content with manual fallback when parsers fail', functio
     expect($freshImport?->status)->toBe(RecipeImportAttemptStatus::Succeeded);
     expect($freshImport?->method_used)->toBe(RecipeImportMethod::Manual);
     expect($recipe?->title)->toBe('Best Banana Bread');
-    expect($recipe?->ingredients)->toBe(['2 bananas', '1 cup flour']);
-    expect($recipe?->instructions)->toBe(['Mash bananas', 'Bake for 45 minutes']);
+    expect($recipe?->ingredientSections())->toBe([[
+        'title' => null,
+        'items' => ['2 bananas', '1 cup flour'],
+    ]]);
+    expect($recipe?->instructionSections())->toBe([[
+        'title' => null,
+        'items' => ['Mash bananas', 'Bake for 45 minutes'],
+    ]]);
     expect($recipe?->import_status)->toBe(RecipeImportStatus::NeedsReview);
 });
 
@@ -253,14 +360,20 @@ function importedRecipeData(RecipeImportMethod $method, bool $needsReview): Impo
         cookMinutes: 20,
         totalMinutes: 30,
         caloriesPerServing: 550,
-        ingredients: ['1 lb chicken', '8 oz pasta'],
-        instructions: ['Cook chicken', 'Boil pasta'],
+        ingredients: [[
+            'title' => null,
+            'items' => ['1 lb chicken', '8 oz pasta'],
+        ]],
+        instructions: [[
+            'title' => null,
+            'items' => ['Cook chicken', 'Boil pasta'],
+        ]],
         notes: null,
         sourceUrl: 'https://example.com/source',
         sourceDomain: 'example.com',
-        sourceTitle: 'Example Recipe',
+        sourceTitle: 'Example Source',
         categoryName: 'Dinner',
-        tags: ['Quick Dinner', 'Chicken'],
+        tags: ['Quick Dinner', 'Pasta'],
         importMethod: $method,
         needsReview: $needsReview,
         rawPayload: ['source' => 'test'],

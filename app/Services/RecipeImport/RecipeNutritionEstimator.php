@@ -11,19 +11,23 @@ class RecipeNutritionEstimator
 {
     public function estimate(ImportedRecipeData $importedRecipeData): ?RecipeNutritionEstimateData
     {
-        if (blank(config('services.openai.api_key')) || $importedRecipeData->ingredients === []) {
+        $ingredients = $importedRecipeData->flattenedIngredients();
+
+        if (blank(config('services.openai.api_key')) || $ingredients === []) {
             return null;
         }
 
         $ingredients = implode("\n", array_map(
             static fn (string $ingredient): string => "- {$ingredient}",
-            $importedRecipeData->ingredients,
+            $ingredients,
         ));
 
-        $instructions = $importedRecipeData->instructions !== []
+        $flattenedInstructions = $importedRecipeData->flattenedInstructions();
+
+        $instructions = $flattenedInstructions !== []
             ? implode("\n", array_map(
                 static fn (string $instruction): string => "- {$instruction}",
-                array_slice($importedRecipeData->instructions, 0, 12),
+                array_slice($flattenedInstructions, 0, 12),
             ))
             : 'No instructions provided.';
 

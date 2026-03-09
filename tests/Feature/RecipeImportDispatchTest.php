@@ -28,8 +28,14 @@ it('processes imports immediately when the queue connection is sync', function (
         cookMinutes: 20,
         totalMinutes: 30,
         caloriesPerServing: 500,
-        ingredients: ['1 cup flour'],
-        instructions: ['Mix ingredients'],
+        ingredients: [[
+            'title' => null,
+            'items' => ['1 cup flour'],
+        ]],
+        instructions: [[
+            'title' => null,
+            'items' => ['Mix ingredients'],
+        ]],
         notes: null,
         sourceUrl: 'https://example.com/recipe',
         sourceDomain: 'example.com',
