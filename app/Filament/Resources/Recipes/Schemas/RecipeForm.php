@@ -243,15 +243,9 @@ class RecipeForm
                     ->reorderable()
                     ->defaultItems(0)
                     ->addActionLabel($addItemLabel)
-                    ->dehydrateStateUsing(fn (?array $state): array => collect($state)->pluck('value')->filter(fn (mixed $value): bool => is_string($value) && filled(trim($value)))->map(fn (string $value): string => trim($value))->values()->all())
+                    ->dehydrateStateUsing(fn (?array $state): array => self::dehydrateSectionItems($state))
                     ->afterStateHydrated(function (Repeater $component, mixed $state): void {
-                        if (! is_array($state)) {
-                            $component->state([]);
-
-                            return;
-                        }
-
-                        $component->state(collect($state)->map(fn (mixed $value): array => ['value' => $value])->values()->all());
+                        $component->state(self::hydrateSectionItems($state));
                     })
                     ->columnSpanFull(),
             ])
@@ -279,11 +273,7 @@ class RecipeForm
                     return null;
                 }
 
-                $items = collect($section['items'] ?? [])
-                    ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
-                    ->map(fn (string $item): string => trim($item))
-                    ->values()
-                    ->all();
+                $items = self::normalizeSectionItemValues($section['items'] ?? []);
 
                 if ($items === []) {
                     return null;
@@ -314,11 +304,7 @@ class RecipeForm
         $containsFlatItems = collect($state)->contains(fn (mixed $value): bool => is_string($value));
 
         if ($containsFlatItems) {
-            $items = collect($state)
-                ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
-                ->map(fn (string $item): array => ['value' => trim($item)])
-                ->values()
-                ->all();
+            $items = self::hydrateSectionItems($state);
 
             return $items === [] ? [] : [[
                 'title' => null,
@@ -332,11 +318,7 @@ class RecipeForm
                     return null;
                 }
 
-                $items = collect($section['items'] ?? [])
-                    ->filter(fn (mixed $item): bool => is_string($item) && filled(trim($item)))
-                    ->map(fn (string $item): array => ['value' => trim($item)])
-                    ->values()
-                    ->all();
+                $items = self::hydrateSectionItems($section['items'] ?? []);
 
                 if ($items === []) {
                     return null;
@@ -346,6 +328,57 @@ class RecipeForm
                     'title' => is_string($section['title'] ?? null) && filled(trim((string) $section['title'])) ? trim((string) $section['title']) : null,
                     'items' => $items,
                 ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, mixed>|null  $state
+     * @return array<int, string>
+     */
+    private static function dehydrateSectionItems(?array $state): array
+    {
+        return self::normalizeSectionItemValues($state ?? []);
+    }
+
+    /**
+     * @return array<int, array{value: string}>
+     */
+    private static function hydrateSectionItems(mixed $state): array
+    {
+        if (! is_array($state)) {
+            return [];
+        }
+
+        return collect(self::normalizeSectionItemValues($state))
+            ->map(fn (string $item): array => ['value' => $item])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, mixed>  $items
+     * @return array<int, string>
+     */
+    private static function normalizeSectionItemValues(array $items): array
+    {
+        return collect($items)
+            ->map(function (mixed $item): ?string {
+                if (is_string($item)) {
+                    $value = trim($item);
+
+                    return filled($value) ? $value : null;
+                }
+
+                if (is_array($item) && is_string($item['value'] ?? null)) {
+                    $value = trim((string) $item['value']);
+
+                    return filled($value) ? $value : null;
+                }
+
+                return null;
             })
             ->filter()
             ->values()
